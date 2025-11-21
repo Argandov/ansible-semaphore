@@ -1,0 +1,8 @@
+- name: Full system upgrade (use with caution)
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Dist upgrade
+      apt:
+        upgrade: dist

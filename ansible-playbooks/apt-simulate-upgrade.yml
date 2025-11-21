@@ -1,0 +1,9 @@
+- name: Simulate upgrade
+  apt:
+    upgrade: safe
+    update_cache: yes
+    simulate: yes
+  register: apt_sim
+
+- debug:
+    var: apt_sim.stdout_lines
