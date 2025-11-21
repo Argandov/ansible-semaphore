@@ -2,9 +2,9 @@
 - name: Safe system updates
   hosts: all
   become: yes
+  gather_facts: no
 
   tasks:
-
     - name: Update package lists
       apt:
         update_cache: yes

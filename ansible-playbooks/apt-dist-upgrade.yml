@@ -1,6 +1,8 @@
+---
 - name: Full system upgrade (use with caution)
   hosts: all
   become: yes
+  gather_facts: no
 
   tasks:
     - name: Dist upgrade
