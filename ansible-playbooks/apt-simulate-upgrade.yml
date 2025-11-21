@@ -1,17 +1,13 @@
 ---
-- name: Simulate upgrade
+- name: Check for upgrades
   hosts: all
   become: yes
-  gather_facts: no
-
   tasks:
-    - name: Simulate upgrade
-      apt:
-        upgrade: safe
-        update_cache: yes
-        simulate: yes
+    - name: Run apt simulate
+      command: apt-get upgrade --simulate
       register: apt_sim
+      changed_when: false  # This tells Ansible "I didn't actually change anything"
 
-    - name: Show upgrade simulation results
+    - name: Show upgrade results
       debug:
         var: apt_sim.stdout_lines
