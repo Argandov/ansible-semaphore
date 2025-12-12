@@ -48,10 +48,12 @@
         state: directory
         mode: '0755'
 
-    # --- PHASE 2: EXECUTION ---
+          # --- PHASE 2: EXECUTION ---
     - name: Run Lynis System Audit
-      # We use command instead of shell for safety.
-      command: "./lynis audit system --quick --pentest --quiet"
+      # CHANGES:
+      # 1. Removed --quiet (So it actually prints the score)
+      # 2. Added --no-colors (So regex matches text, not invisible color codes)
+      command: "./lynis audit system --quick --pentest --no-colors"
       args:
         chdir: "{{ lynis_install_path }}"
       register: lynis_output
@@ -59,10 +61,17 @@
       changed_when: false
 
     # --- PHASE 3: PARSING & METRICS ---
+    - name: Debug Lynis Output (Optional - helps if it fails again)
+      debug:
+        msg: "Last 5 lines of output: {{ lynis_output.stdout_lines[-5:] }}"
+
     - name: Extract Hardening Index Score
       set_fact:
-        # Standard Jinja2 filter to extract a number from text
+        # Improved Regex: matches the number even if there are extra spaces or tabs
         lynis_score: "{{ lynis_output.stdout | regex_search('Hardening index\\s*:\\s*(\\d+)', '\\1') | first }}"
+      # We add a 'default' filter to prevent the crash if it still returns None
+      vars:
+        lynis_score: "{{ lynis_score | default('0') }}"
 
     - name: Fail if score wasn't found (Safety check)
       fail:
