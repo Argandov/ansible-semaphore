@@ -1,0 +1,86 @@
+---
+# ==============================================================================
+# Playbook: Lynis Security Audit & Prometheus Export
+# Author: Argandov
+# Description:
+#   Downloads the latest Lynis source, runs a non-interactive system audit,
+#   parses the hardening score, and exports it to a Node Exporter textfile.
+#
+# Requirements:
+#   - Target must have Node Exporter installed.
+#   - Node Exporter must have --collector.textfile.directory enabled.
+#
+# Variables (defaults):
+#   lynis_version: "3.0.9"
+#   node_exporter_textfile_dir: "/var/lib/prometheus/node-exporter"
+# ==============================================================================
+- name: Lynis Security Audit & Prometheus Export
+  hosts: all
+  become: yes
+  gather_facts: yes  # <--- REQUIRED for the timestamp to work!
+
+  vars:
+    lynis_version: "3.0.9"
+    lynis_download_url: "https://github.com/CISofy/lynis/archive/refs/tags/{{ lynis_version }}.tar.gz"
+    lynis_install_path: "/opt/lynis"
+    # This matches the path you confirmed with 'ls'
+    node_exporter_textfile_dir: "/var/lib/prometheus/node-exporter"
+
+  tasks:
+    # --- PHASE 1: PREPARATION ---
+    - name: Ensure Lynis directory exists
+      file:
+        path: "{{ lynis_install_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Download and Unarchive Lynis
+      unarchive:
+        src: "{{ lynis_download_url }}"
+        dest: "{{ lynis_install_path }}"
+        remote_src: yes
+        extra_opts: [--strip-components=1]
+        creates: "{{ lynis_install_path }}/lynis"
+
+    - name: Ensure Node Exporter textfile directory exists
+      file:
+        path: "{{ node_exporter_textfile_dir }}"
+        state: directory
+        mode: '0755'
+
+    # --- PHASE 2: EXECUTION ---
+    - name: Run Lynis System Audit
+      # We use command instead of shell for safety.
+      command: "./lynis audit system --quick --pentest --quiet"
+      args:
+        chdir: "{{ lynis_install_path }}"
+      register: lynis_output
+      ignore_errors: yes
+      changed_when: false
+
+    # --- PHASE 3: PARSING & METRICS ---
+    - name: Extract Hardening Index Score
+      set_fact:
+        # Standard Jinja2 filter to extract a number from text
+        lynis_score: "{{ lynis_output.stdout | regex_search('Hardening index\\s*:\\s*(\\d+)', '\\1') | first }}"
+
+    - name: Fail if score wasn't found (Safety check)
+      fail:
+        msg: "Could not parse Lynis score. Check lynis output."
+      when: lynis_score is not defined or lynis_score == ""
+
+    - name: Write Prometheus Metric
+      copy:
+        dest: "{{ node_exporter_textfile_dir }}/lynis.prom"
+        content: |
+          # HELP security_lynis_hardening_index The hardening index score from Lynis audit
+          # TYPE security_lynis_hardening_index gauge
+          security_lynis_hardening_index {{ lynis_score }}
+          # HELP security_lynis_last_run_timestamp Unix timestamp of last audit
+          # TYPE security_lynis_last_run_timestamp gauge
+          security_lynis_last_run_timestamp {{ ansible_date_time.epoch }}
+        mode: '0644'
+
+    - name: Display Score in Semaphore Logs
+      debug:
+        msg: "Audit Complete. Hardening Index: {{ lynis_score }}/100"
